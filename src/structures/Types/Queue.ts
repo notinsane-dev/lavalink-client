@@ -37,3 +37,34 @@ export interface QueueChangesWatcher {
     /** Set a value inside a guildId (MUST BE UNPARSED) */
     shuffled: (guildId: string, oldStoredQueue: StoredQueue, newStoredQueue: StoredQueue) => void;
 }
+
+/**
+ * Sort keys for queue tracks
+ */
+export type SortKey = "duration" | "title" | "author";
+
+/**
+ * Sort order for sorting operations
+ */
+export type SortOrder = "asc" | "desc";
+
+/**
+ * Filter options for searching tracks in the queue
+ */
+export interface FilterOptions {
+    /** Filter by track title (exact match) */
+    title?: string;
+    /** Filter by track author (exact match) */
+    author?: string;
+    /** Filter by whether the track is a stream */
+    isStream?: boolean;
+    /** Filter by track duration range */
+    duration?: {
+        /** Minimum duration in milliseconds */
+        min?: number;
+        /** Maximum duration in milliseconds */
+        max?: number;
+    };
+    /** Custom filter function for advanced filtering */
+    custom?: (track: Track | UnresolvedTrack) => boolean;
+}

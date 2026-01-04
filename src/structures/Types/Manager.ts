@@ -54,6 +54,12 @@ export interface LavalinkManagerEvents<CustomPlayerT extends Player = Player> {
      */
     "playerDisconnect": (player: CustomPlayerT, voiceChannelId: string) => void;
     /**
+     * Emitted when a Player successfully reconnects to a voice channel after being disconnected.
+     * This event fires after the player has reestablished connection to the voice channel.
+     * @event Manager#playerReconnect
+     */
+    "playerReconnect": (player: CustomPlayerT, voiceChannelId: string) => void;
+    /**
      * Emitted when a Node-Socket got closed for a specific Player.
      * Usually emits when the audio websocket to discord is closed, This can happen for various reasons (normal and abnormal), e.g. when using an expired voice server update. 4xxx codes are usually bad.
      *

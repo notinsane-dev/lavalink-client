@@ -2,7 +2,7 @@ import { ManagerUtils, MiniMap, QueueSymbol } from "./Utils";
 
 import type { Track, UnresolvedTrack } from "./Types/Track";
 import type {
-    ManagerQueueOptions, QueueChangesWatcher, QueueStoreManager, StoredQueue
+    ManagerQueueOptions, QueueChangesWatcher, QueueStoreManager, StoredQueue, FilterOptions, SortKey, SortOrder
 } from "./Types/Queue";
 export class QueueSaver {
     /**
@@ -211,6 +211,99 @@ export class Queue {
          */
         totalDuration: () => {
             return this.tracks.reduce((acc: number, cur) => acc + (cur.info.duration || 0), this.current?.info.duration || 0);
+        },
+
+        /**
+         * Filter tracks in the queue by various criteria. Does NOT mutate the queue.
+         * @param options Filter options for finding tracks
+         * @returns Array of matching tracks (does not modify the original queue)
+         * @example
+         * ```ts
+         * // Find by artist
+         * const tracks = player.queue.utils.filterTracks({ author: "Artist Name" });
+         * 
+         * // Find streams
+         * const streams = player.queue.utils.filterTracks({ isStream: true });
+         * 
+         * // Find by duration (5-10 mins)
+         * const tracks = player.queue.utils.filterTracks({
+         *   duration: { min: 300000, max: 600000 }
+         * });
+         * 
+         * // Custom filter
+         * const customTracks = player.queue.utils.filterTracks({
+         *   custom: (track) => track.info.title.includes("remix")
+         * });
+         * ```
+         */
+        filterTracks: (options: FilterOptions): (Track | UnresolvedTrack)[] => {
+            return this.tracks.filter(track => {
+                if (options.title && track.info.title !== options.title) return false;
+                if (options.author && track.info.author !== options.author) return false;
+                if (options.isStream !== undefined && track.info.isStream !== options.isStream) return false;
+                if (options.duration) {
+                    const duration = track.info.duration || 0;
+                    if (options.duration.min !== undefined && duration < options.duration.min) return false;
+                    if (options.duration.max !== undefined && duration > options.duration.max) return false;
+                }
+                if (options.custom && !options.custom(track)) return false;
+                return true;
+            });
+        },
+
+        /**
+         * Find the first track in the queue matching the criteria. Does NOT mutate the queue.
+         * @param options Filter options for finding a track
+         * @returns The first matching track or undefined
+         * @example
+         * ```ts
+         * // Find first track by artist
+         * const track = player.queue.utils.findTrack({ author: "Artist Name" });
+         * 
+         * // Find first stream
+         * const stream = player.queue.utils.findTrack({ isStream: true });
+         * 
+         * // Custom find
+         * const track = player.queue.utils.findTrack({
+         *   custom: (t) => t.info.duration > 600000
+         * });
+         * ```
+         */
+        findTrack: (options: FilterOptions): (Track | UnresolvedTrack) | undefined => {
+            return this.tracks.find(track => {
+                if (options.title && track.info.title !== options.title) return false;
+                if (options.author && track.info.author !== options.author) return false;
+                if (options.isStream !== undefined && track.info.isStream !== options.isStream) return false;
+                if (options.duration) {
+                    const duration = track.info.duration || 0;
+                    if (options.duration.min !== undefined && duration < options.duration.min) return false;
+                    if (options.duration.max !== undefined && duration > options.duration.max) return false;
+                }
+                if (options.custom && !options.custom(track)) return false;
+                return true;
+            });
+        },
+
+        /**
+         * Get a range of tracks from the queue. Does NOT mutate the queue.
+         * Works similarly to Array.slice() - returns a shallow copy of a portion of the queue.
+         * @param start Start index (inclusive)
+         * @param end End index (exclusive)
+         * @returns Array of tracks in the specified range
+         * @example
+         * ```ts
+         * // Get first 10 tracks
+         * const tracks = player.queue.utils.getTracks(0, 10);
+         * 
+         * // Get tracks from index 5 to 15
+         * const middleTracks = player.queue.utils.getTracks(5, 15);
+         * 
+         * // Get all tracks from index 20 onwards
+         * const remainingTracks = player.queue.utils.getTracks(20);
+         * ```
+         */
+        getTracks: (start: number, end?: number): (Track | UnresolvedTrack)[] => {
+            return this.tracks.slice(start, end);
         }
     }
 
@@ -238,6 +331,105 @@ export class Queue {
 
         await this.utils.save();
         return this.tracks.length;
+    }
+
+    /**
+     * Sort the queue tracks by a specified key and order. MUTATES the queue (modifies the original array).
+     * After sorting, the queue is automatically saved.
+     * @param key The property to sort by ('duration', 'title', or 'author')
+     * @param order Sort order - 'asc' for ascending, 'desc' for descending
+     * @returns The number of tracks in the queue
+     * @example
+     * ```ts
+     * // Sort by duration (shortest to longest)
+     * await player.queue.sortBy("duration", "asc");
+     * 
+     * // Sort by title alphabetically (Z to A)
+     * await player.queue.sortBy("title", "desc");
+     * 
+     * // Sort by author
+     * await player.queue.sortBy("author", "asc");
+     * ```
+     */
+    public async sortBy(key: SortKey, order: SortOrder = "asc"): Promise<number> {
+        if (this.tracks.length <= 1) return this.tracks.length;
+
+        this.tracks.sort((a, b) => {
+            let compareA: string | number;
+            let compareB: string | number;
+
+            switch (key) {
+                case "duration":
+                    compareA = a.info.duration || 0;
+                    compareB = b.info.duration || 0;
+                    break;
+                case "title":
+                    compareA = a.info.title.toLowerCase();
+                    compareB = b.info.title.toLowerCase();
+                    break;
+                case "author":
+                    compareA = a.info.author.toLowerCase();
+                    compareB = b.info.author.toLowerCase();
+                    break;
+                default:
+                    return 0;
+            }
+
+            if (compareA < compareB) return order === "asc" ? -1 : 1;
+            if (compareA > compareB) return order === "asc" ? 1 : -1;
+            return 0;
+        });
+
+        await this.utils.save();
+        return this.tracks.length;
+    }
+
+    /**
+     * Sort the queue tracks by a specified key and order. Does NOT mutate the queue (returns a new sorted array).
+     * Similar to Array.toSorted() - the original queue remains unchanged.
+     * @param key The property to sort by ('duration', 'title', or 'author')
+     * @param order Sort order - 'asc' for ascending, 'desc' for descending
+     * @returns A new sorted array of tracks (original queue is not modified)
+     * @example
+     * ```ts
+     * // Get sorted copy by duration without changing the queue
+     * const sortedTracks = player.queue.toSortedBy("duration", "asc");
+     * 
+     * // Get sorted copy by title (A to Z)
+     * const alphabetical = player.queue.toSortedBy("title", "asc");
+     * 
+     * // Original queue remains unchanged
+     * console.log(player.queue.tracks); // Still in original order
+     * ```
+     */
+    public toSortedBy(key: SortKey, order: SortOrder = "asc"): (Track | UnresolvedTrack)[] {
+        if (this.tracks.length <= 1) return [...this.tracks];
+
+        return [...this.tracks].sort((a, b) => {
+            let compareA: string | number;
+            let compareB: string | number;
+
+            switch (key) {
+                case "duration":
+                    compareA = a.info.duration || 0;
+                    compareB = b.info.duration || 0;
+                    break;
+                case "title":
+                    compareA = a.info.title.toLowerCase();
+                    compareB = b.info.title.toLowerCase();
+                    break;
+                case "author":
+                    compareA = a.info.author.toLowerCase();
+                    compareB = b.info.author.toLowerCase();
+                    break;
+                default:
+                    return 0;
+            }
+
+            if (compareA < compareB) return order === "asc" ? -1 : 1;
+            if (compareA > compareB) return order === "asc" ? 1 : -1;
+            return 0;
+        });
     }
 
     /**
